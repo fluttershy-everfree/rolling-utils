@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<title>🔮🎲Oracles, Divination et Dés</title>
+		<script type="text/javascript" src="./random-roller.js"></script>
+		<script type="text/javascript" src="./dom.js"></script>
+		<link rel="stylesheet" type="text/css" href="./style.css">
+		<link rel="stylesheet" type="text/css" href="./shapes.css">
+		<script type="text/javascript">
+			const ROLLING = (() => {
+				const ROLL_VERDICT = [
+					{ id: 'fail', label: "Échec"      },
+					{ id: 'meet', label: "Sur le fil" },
+					{ id: 'pass', label: "Succès"     }
+				];
+				function die(size) { return Array.from({length: size}, (_,i)=>(i+1)); };
+				/** Value: the number rolled. type : min|max|, dismissed :false|true|<string>reason */
+				function die_roll(die, v, keep) { return {
+					value: v,
+					type: ((v === 1) ? 'min' : (v === die.length) ? 'max' : ''),
+					dismissed: !keep
+				}; }
+				function dc_verdict(dc, roll) {
+					const verdict = ((dc < roll) ? 'pass' : (dc <= roll) ? 'meet' : 'fail');
+					return ROLL_VERDICT.find( ({id}) => (id === verdict) );
+				}
+				return {
+					r(c) { return c[Math.floor(Math.random()*c.length)]; },
+					die, die_roll, dc_verdict,
+					DICE: {
+						d2: die(2),
+						d4: die(4),
+						d6: die(6),
+						d8: die(8),
+						d10: die(10),
+						d12: die(12),
+						d20: die(20)
+					},
+					ROLL_VERDICT
+				};
+			})();
+		</script>
+		
+		
+		<link rel="stylesheet" type="text/css" href="./oracle/style.css">
+		<script type="text/javascript" src="./oracle/oracle.js"></script>
+		
+		<link rel="stylesheet" type="text/css" href="./tables/style.css">
+		<script type="text/javascript" src="./tables/table-roller.js"></script>
+		
+		<link rel="stylesheet" type="text/css" href="./keywords/style.css">
+		<script type="text/javascript" src="./words-key5.js"></script>
+		<script type="text/javascript" src="./keywords/keywords.js"></script>
+		
+		<link rel="stylesheet" type="text/css" href="./cards/style.css">
+		<script type="text/javascript" src="./cards/cards-dealer.js"></script>
+
+		<link rel="stylesheet" type="text/css" href="./dice/style.css">
+		<script type="text/javascript" src="./dice/simple-roller.js"></script>
+		<script type="text/javascript" src="./dice/traits-roller.js"></script>
+		<script type="text/javascript" src="./dice/complex-roller.js"></script>
+
+
+		<script id="characteristics-script" type="text/javascript">/*CHARACTERISTICS*/
+			const CHARACTERISTICSS = [
+				{
+					label: "Force",
+					hint: "Déplorable. Le raton n'est pas une machine de guerre, loin de là. Les solutions employant la force ne sont pas celles qu'il priorise. S'il est contraint d'utiliser sa force, il y a peu de chances que ça se passe bien.",
+					default_mod: '-2',
+					color: '#fc9867',
+					subs: [
+						{ sub: "Force brute", mod: '-3' },
+						{ sub: "Endurance", mod: '-1' }
+					]
+				},
+				{
+					label: "Dextérité",
+					hint: "Passable. Le raton sait manipuler de petits objets mais aura du mal à exécuter des manoeuvres compleces ou manier/viser avec des armes qui ne sont pas faite pour lui.",
+					default_mod: '+1',
+					color: '#c1c0c0',
+					subs: [
+						{ sub: "Agilité", mod: '+1' },
+						{ sub: "Adresse", mod: '+0' },
+						{ sub: "Délicatesse", mod: '+2' }
+					]
+				},
+				{
+					label: "Constitution",
+					hint: "Exceptionnelle. Le raton a depuis longtemps une vie harasssante et une hygiène de vie exécrable. Il peut quasiment tout encaisser et tout manger, parfois au prix d'une longue récupération.",
+					default_mod: '+4',
+					color: '#fb4649',
+					subs: [
+						{ sub: "Nourriture avariée, poison, maladie", mod: '+5' },
+						{ sub: "Froid", mod: '+3' },
+						{ sub: "Chaleur", mod: '+1' }
+					]
+				},
+				{
+					label: "Intelligence",
+					hint: "Affligeante. Le raton est loin d'être cultivé, et son éveil récent ne fait pas de lui un érudit.",
+					default_mod: '-2',
+					color: '#ffd866',
+					subs: [
+						{ sub: "Savoirs", mod: '-3' },
+						{ sub: "Logique élémentaire", mod: '-1' },
+						{ sub: "Logique complexe", mod: '-3' }
+					]
+				},
+				{
+					label: "Sagesse",
+					hint: "Formidable. Le raton est très doué pour l'auto-préservation, survie oblige. Sa sagesse est toutefois très orientée.",
+					default_mod: '+3',
+					color: '#ab9df2',
+					subs: [
+						{ sub: "Survie", mod: '+3' },
+						{ sub: "Instinct", mod: '+3' },
+						{ sub: "Débrouillardise", mod: '+3' },
+						{ sub: "Herboristerie", mod: '+2' },
+						{ sub: "Stratégie", mod: '-1' }
+					]
+				},
+				{
+					label: "Charisme",
+					hint: "Risible. Le raton fait pitié, mais c'est parfois une force.",
+					default_mod: '-2',
+					color: '#f92672',
+					subs: [
+						{ sub: "Intimidation", mod: '-2' },
+						{ sub: "Interprétation", mod: '-2' },
+						{ sub: "Tromperie", mod: '+0' },
+						{ sub: "Persuasion", mod: '+1' },
+						{ sub: "Apitoiement", mod: '+2' }
+					]
+				}
+			];
+			const CHARACTERISTICS = [
+				{
+					label: "Carac 1 (la première)",
+					hint: "Description.",
+					default_mod: '-5',
+					color: '#fc9867',
+					subs: [
+						{ sub: "Sub 1-1", mod: '-4' },
+						{ sub: "Sub 1-2", mod: '-3' }
+					]
+				},
+				{
+					label: "Carac 2",
+					hint: "Description.",
+					default_mod: '-2',
+					color: '#c1c0c0',
+					subs: [
+						{ sub: "Sub 2-1", mod: '-1' },
+						{ sub: "Sub 2-2", mod: '0' },
+						{ sub: "Sub 2-3", mod: '+3' },
+						{ sub: "Sub 2-4", mod: '-2' }
+					]
+				},
+				{
+					label: "Carac 3",
+					hint: "Description",
+					default_mod: '+1',
+					color: '#fb4649',
+					subs: [
+						{ sub: "Sub 3-1", mod: '-1' }
+					]
+				},
+				{
+					label: "Carac 4",
+					hint: "Description.",
+					default_mod: '+2',
+					color: '#ffd866',
+					subs: [
+						{ sub: "Sub 4-1", mod: '-3' },
+						{ sub: "Sub 4-2", mod: '+3' },
+						{ sub: "Sub 4-3", mod: '+4' }
+					]
+				},
+				{
+					label: "Carac 5 (cinq)",
+					hint: "Description.",
+					default_mod: '+5',
+					color: '#ab9df2',
+					subs: [
+						{ sub: "Sub 5-1", mod: '+3' },
+						{ sub: "Sub 5-2", mod: '+4' },
+						{ sub: "Sub 5-3", mod: '+5' },
+						{ sub: "Sub 5-4", mod: '+6' },
+						{ sub: "Sub 5-5", mod: '+7' }
+					]
+				},
+				{
+					label: "Carac 6 (la sixième)",
+					hint: "Description.",
+					default_mod: '-2',
+					color: '#f92672',
+					subs: [
+						{ sub: "Sub 6-1", mod: '-2' },
+						{ sub: "Sub 6-2", mod: '-2' },
+						{ sub: "Sub 6-3 (Nom un peu plus long)", mod: '+0' },
+						{ sub: "Sub 6-4", mod: '+1' },
+						{ sub: "Sub 6-5", mod: '+2' }
+					]
+				}
+			];
+		</script>
+		<script type="text/javascript">
+			window.addEventListener('DOMContentLoaded', function() {
+				const keywords_lists = [
+					{ id: 'who'  , symbol: '🧑', prefix: 'Qui' , label: "Qui", color: '#a9dc76', list: [
+					]},
+					{ id: 'where', symbol: '🗺️', prefix: 'Ou'  , label: "Où", color: '#fc9867', list: [
+					]},
+					{ id: 'what' , symbol: '🎁', prefix: 'Quoi', label: "Quoi", color: '#ab9df2', list: [
+					]},
+					{ id: 'how'  , symbol: '💬', prefix: '..~' , label: "Description", color: '#ffd866', list: [
+					]},
+					{ id: 'with' , symbol: '💭', prefix: '..+' , label: "Complément", color: '#f92672', list: [
+					]}
+				];
+				const {d} = DOM;
+				document.body.append(
+					d({c:['section'], a:{id:'inspiration'}, ch:[
+						ORACLES.setup(),
+						TABLE_ROLLER.setup(),
+						KEYWORDS.setup(keywords_lists),
+						CARDS_DEALER.setup()
+					]}),
+					SIMPLE_ROLLER.setup(),
+					TRAITS_ROLLER.setup(),
+					COMPLEX_ROLLER.setup()
+				);
+			});
+		</script>
+		<style type="text/css">
+			
+		</style>
+	</head>
+	<body>
+		<!--<div style="font-weight: bolder;">
+			<div style="color: #f92672;">#f92672 [DEFAULT] aka pink-red</div>
+			<div style="color: #fb4649;">#fb4649 [CUSTOM MIX] aka red</div>
+			<div style="color: #fc9867;">#fc9867 [DEFAULT] aka orange</div>
+			<div style="color: #ffd866;">#ffd866 [DEFAULT] aka yellow</div>
+			<div style="color: #a9dc76;">#a9dc76 [DEFAULT] aka green</div>
+			<div style="color: #77e297;">#77e297 [CUSTOM MIX] aka greenish</div>
+			<div style="color: #78dce8;">#78dce8 [DEFAULT] aka cyan</div>
+			<div style="color: #88e8d8;">#88e8d8 [CUSTOM MIX] aka turquoise</div>
+			<div style="color: #8aaeed;">#8aaeed [CUSTOM MIX] aka blue</div>
+			<div style="color: #ab9df2;">#ab9df2 [DEFAULT] aka purple</div>
+			<div style="color: #e564f3;">#e564f3 [CUSTOM MIX] aka pink</div>
+			<div style="color: #f783c2;">#f783c2 [CUSTOM MIX] aka rose</div>
+		</div>-->
+	</body>
+</html>

@@ -1,0 +1,161 @@
+.d4 {
+	clip-path: polygon( /* d8 shadow */
+		50% 0%,
+		93.30% 75%,
+		6.70% 75%
+	);
+	--color: gray;
+	background: conic-gradient(
+		transparent 120deg,
+		color-mix(in srgb, black 40%, transparent) 120deg 240deg,
+		color-mix(in srgb, black 30%, transparent) 240deg
+	), var(--color);
+}
+.d6 {
+	clip-path: polygon( /* icosahedron shadow  */
+		50% 0%,
+		93.30% 25%,
+		93.30% 75%,
+		50% 100%,
+		6.70% 75%,
+		6.70% 25%
+	);
+	background: conic-gradient(
+		transparent 60deg,
+		color-mix(in srgb, black 20%, transparent)  60deg 180deg,
+		color-mix(in srgb, black 40%, transparent) 180deg 300deg,
+		transparent 300deg
+	), var(--color)
+}
+.d8 {
+	clip-path: polygon( /* d8 shadow */
+		50% 0%,
+		100% 50%,
+		50% 100%,
+		0% 50%
+	);
+	--color: gray;
+	background: conic-gradient(
+		transparent 90deg,
+		color-mix(in srgb, black 20%, transparent) 90deg 180deg,
+		color-mix(in srgb, black 40%, transparent) 180deg 270deg,
+		color-mix(in srgb, black 30%, transparent) 270deg
+	), var(--color);
+}
+
+.shaped-ends, .shaped-ends--before::before, .shaped-ends--after::after {
+	--dent: 0.5rem;
+	--left-shape: 0% 100%, 0% 0%;
+	--right-shape: 100% 0%, 100% 100%;
+	clip-path: padding-box polygon(var(--left-shape), var(--right-shape));
+}
+.shape-dflat-left   , .shape-dflat-left--before::before   , .shape-dflat-left--after::after,
+[shape-left="dflat"], [shape-left--before="dflat"]::before, [shape-left--after="dflat"]::after {
+	--left-shape:
+			 0%                 100%,
+			 0%                   0%,
+			 var(--dent)          0%,
+			 var(--dent)        100%,
+		calc(var(--dent) * 1.5) 100%,
+		calc(var(--dent) * 1.5)   0%;
+}
+.shape-dflat-right   , .shape-dflat-right--before::before   , .shape-dflat-right--after::after,
+[shape-right="dflat"], [shape-right--before="dflat"]::before, [shape-right--after="dflat"]::after {
+	--right-shape:
+			 100%                        0%,
+			 100%                      100%,
+		calc(100% - var(--dent)      ) 100%,
+		calc(100% - var(--dent)      )   0%,
+		calc(100% - var(--dent) * 1.5)   0%,
+		calc(100% - var(--dent) * 1.5) 100%;
+}
+
+.shape-chevron-left   , .shape-chevron-left--before::before   , .shape-chevron-left--after::after,
+[shape-left="chevron"], [shape-left--before="chevron"]::before, [shape-left--after="chevron"]::after {
+	--left-shape:              var(--dent)  100%,   0% 50%,             var(--dent)    0%;
+}
+.shape-chevron-right   , .shape-chevron-right--before::before   , .shape-chevron-right--after::after,
+[shape-right="chevron"], [shape-right--before="chevron"]::before, [shape-right--after="chevron"]::after {
+	--right-shape: calc(100% - var(--dent))   0%, 100% 50%, calc(100% - var(--dent)) 100%;
+}
+.shape-dchevron-left   , .shape-dchevron-left--before::before   , .shape-dchevron-left--after::after,
+[shape-left="dchevron"], [shape-left--before="dchevron"]::before, [shape-left--after="dchevron"]::after {
+	--left-shape:
+		calc(var(--dent) * 2.5) 100%,
+		calc(var(--dent) * 1.5)  50%,
+		calc(var(--dent) * 2.5)   0%,
+		calc(var(--dent) * 2  )   0%,
+			 var(--dent)         50%,
+		calc(var(--dent) * 2  ) 100%,
+			 var(--dent)        100%,
+			 0%                  50%,
+			 var(--dent)          0%;
+}
+.shape-dchevron-right   , .shape-dchevron-right--before::before   , .shape-dchevron-right--after::after,
+[shape-right="dchevron"], [shape-right--before="dchevron"]::before, [shape-right--after="dchevron"]::after {
+	--right-shape:
+		calc(100% - var(--dent) * 2.5)   0%,
+		calc(100% - var(--dent) * 1.5)  50%,
+		calc(100% - var(--dent) * 2.5) 100%,
+		calc(100% - var(--dent) * 2  ) 100%,
+		calc(100% - var(--dent)      )  50%,
+		calc(100% - var(--dent) * 2  )   0%,
+		calc(100% - var(--dent)      )   0%,
+			 100%                       50%,
+		calc(100% - var(--dent)      ) 100%;
+}
+.shape-diamond-left   , .shape-diamond-left--before::before   , .shape-diamond-left--after::after,
+[shape-left="diamond"], [shape-left--before="diamond"]::before, [shape-left--after="diamond"]::after {
+	--left-shape:
+		calc(var(--dent) * 1.5) 100%,
+		calc(var(--dent) * 2.5)  50%,
+		calc(var(--dent) * 1.5)   0%,
+			 var(--dent)          0%,
+		calc(var(--dent) * 2  )  50%,
+			 var(--dent)        100%,
+			 var(--dent)        100%,
+			 0%                  50%,
+			 var(--dent)          0%;
+}
+.shape-diamond-right   , .shape-diamond-right--before::before   , .shape-diamond-right--after::after,
+[shape-right="diamond"], [shape-right--before="diamond"]::before, [shape-right--after="diamond"]::after {
+	--right-shape:
+		calc(100% - var(--dent) * 1.5)   0%,
+		calc(100% - var(--dent) * 2.5)  50%,
+		calc(100% - var(--dent) * 1.5) 100%,
+		calc(100% - var(--dent)      ) 100%,
+		calc(100% - var(--dent) * 2  )  50%,
+		calc(100% - var(--dent)      )   0%,
+		calc(100% - var(--dent)      )   0%,
+			 100%                       50%,
+		calc(100% - var(--dent)      ) 100%;
+}
+
+.shape-slash-left   , .shape-slash-left--before::before   , .shape-slash-left--after::after,
+[shape-left="slash"], [shape-left--before="slash"]::before, [shape-left--after="slash"]::after {
+	--left-shape:              var(--dent)    0%, 100%   0%;
+}
+.shape-slash-right   , .shape-slash-right--before::before   , .shape-slash-right--after::after,
+[shape-right="slash"], [shape-right--before="slash"]::before, [shape-right--after="slash"]::after {
+	--right-shape: calc(100% - var(--dent)) 100%,   0% 100%;
+}
+.shape-dslash-left   , .shape-dslash-left--before::before   , .shape-dslash-left--after::after,
+[shape-left="dslash"], [shape-left--before="dslash"]::before, [shape-left--after="dslash"]::after {
+	--left-shape:
+			 0%                 100%,
+			 var(--dent)          0%,
+		calc(var(--dent) * 2  )   0%,
+			 var(--dent)        100%,
+		calc(var(--dent) * 1.5) 100%,
+		calc(var(--dent) * 2.5)   0%;
+}
+.shape-dslash-right   , .shape-dslash-right--before::before   , .shape-dslash-right--after::after,
+[shape-right="dslash"], [shape-right--before="dslash"]::before, [shape-right--after="dslash"]::after {
+	--right-shape:
+		     100%                        0%,
+		calc(100% - var(--dent)      ) 100%,
+		calc(100% - var(--dent) * 2  ) 100%,
+		calc(100% - var(--dent)      )   0%,
+		calc(100% - var(--dent) * 1.5)   0%,
+		calc(100% - var(--dent) * 2.5) 100%;
+}

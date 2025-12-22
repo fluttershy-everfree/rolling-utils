@@ -1,0 +1,70 @@
+[
+	{
+		"label": "Carac 1 (la première)",
+		"hint": "Description.",
+		"default_mod": "-5",
+		"color": "#fc9867",
+		"subs": [
+			{ "sub": "Sub 1-1", "mod": "-4" },
+			{ "sub": "Sub 1-2", "mod": "-3" }
+		]
+	},
+	{
+		"label": "Carac 2",
+		"hint": "Description.",
+		"default_mod": "-2",
+		"color": "#c1c0c0",
+		"subs": [
+			{ "sub": "Sub 2-1", "mod": "-1" },
+			{ "sub": "Sub 2-2", "mod":  "0" },
+			{ "sub": "Sub 2-3", "mod": "+3" },
+			{ "sub": "Sub 2-4", "mod": "-2" }
+		]
+	},
+	{
+		"label": "Carac 3",
+		"hint": "Description",
+		"default_mod": "+1",
+		"color": "#fb4649",
+		"subs": [
+			{ "sub": "Sub 3-1", "mod": "-1" }
+		]
+	},
+	{
+		"label": "Carac 4",
+		"hint": "Description.",
+		"default_mod": "+2",
+		"color": "#ffd866",
+		"subs": [
+			{ "sub": "Sub 4-1", "mod": "-3" },
+			{ "sub": "Sub 4-2", "mod": "+3" },
+			{ "sub": "Sub 4-3", "mod": "+4" }
+		]
+	},
+	{
+		"label": "Carac 5 (cinq)",
+		"hint": "Description.",
+		"default_mod": "+5",
+		"color": "#ab9df2",
+		"subs": [
+			{ "sub": "Sub 5-1", "mod": "+3" },
+			{ "sub": "Sub 5-2", "mod": "+4" },
+			{ "sub": "Sub 5-3", "mod": "+5" },
+			{ "sub": "Sub 5-4", "mod": "+6" },
+			{ "sub": "Sub 5-5", "mod": "+7" }
+		]
+	},
+	{
+		"label": "Carac 6 (la sixième)",
+		"hint": "Description.",
+		"default_mod": "-2",
+		"color": "#f92672",
+		"subs": [
+			{ "sub": "Sub 6-1", "mod": "-2" },
+			{ "sub": "Sub 6-2", "mod": "-2" },
+			{ "sub": "Sub 6-3 (Nom un peu plus long)", "mod": "+0" },
+			{ "sub": "Sub 6-4", "mod": "+1" },
+			{ "sub": "Sub 6-5", "mod": "+2" }
+		]
+	}
+]

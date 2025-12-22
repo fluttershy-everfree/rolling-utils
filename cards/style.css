@@ -1,0 +1,22 @@
+@scope (#cards-dealing) {
+	#card-dealing {
+		&, .card-deal {
+			display: flex;
+			align-items: center;
+			font-family: monospace;
+				font-size: 1rem;
+		}
+		.do-deal { cursor: pointer; }
+		.card-deal {
+			&::before {
+				content: attr(colour, '');
+			}
+			&::after {
+				display: inline-block;
+				width: 2ch;
+				text-align: center;
+				content: attr(value, '');
+			}
+		}
+	}
+}

@@ -1,0 +1,104 @@
+@scope (#oracle-rolling) {
+	#oracles {
+		display: flex;
+		gap: 0.25rem;
+		.oracle {
+			background-color: var(--color);
+			border-color: var(--color);
+			appearance: none;
+			border-radius: 0.25rem;
+			cursor: pointer;
+			&:first-child {
+				border-top-left-radius: 0.5rem;
+				border-bottom-left-radius: 0.5rem;
+			}
+			&:last-child {
+				border-top-right-radius: 0.5rem;
+				border-bottom-right-radius: 0.5rem;
+			}
+			&:not([likeliness]) {
+				font-family: monospace;
+				font-weight: bolder;
+				border-radius: 0.5rem;
+				background-color: var(--color);
+				border-color: var(--color);
+			}
+			&[likeliness="very-unlikely"] { --color: #fc9867; }
+			&[likeliness="unlikely"     ] { --color: #ffd866; }
+			&[likeliness="neutral"      ] { --color: #a9dc76; }
+			&[likeliness="likely"       ] { --color: #78dce8; }
+			&[likeliness="very-likely"  ] { --color: #ab9df2; }
+		}
+	}
+	#auguries {
+		display: inline-grid;
+		grid-template-columns: repeat(6, auto);
+		grid-gap: 0.25rem;
+		[augury] { background-color: var(--color); grid-column: var(--slot); }
+		[augury="no-and" ] { --color: #f92672; --slot: 1; } /* pink-red */
+		/* mixed (red) : #fb4649 */
+		[augury="no"     ] { --color: #fc9867; --slot: 2; } /* orange */
+		[augury="no-but" ] { --color: #ffd866; --slot: 3; }
+		[augury="yes-but"] { --color: #a9dc76; --slot: 4; } /* green */
+		/* mixed (green) : #77e297 */
+		[augury="yes"    ] { --color: #78dce8; --slot: 5; } /* cyan */
+		/*mixed (turquoise) : #88e8d8 */
+		/* mixed (blue) : #8aaeed */
+		[augury="yes-and"] { --color: #ab9df2; --slot: 6; }
+		/* mixed (pink) : #e564f3 */
+		/* mixed (rose) : #f783c2 */
+		.augury {
+			grid-row: 1;
+			display: inline-block;
+			position: relative;
+			color: #19181a;
+			font-family: sans-serif;
+			font-variant: small-caps;
+			font-weight: bolder;
+			text-align: center;
+			grid-column: var(--slot);
+			opacity: 0.25;
+			&:not(.active) { pointer-events: none; }
+			&.active {
+				opacity: 1; outline: dashed 0.125rem var(--color);
+				cursor: pointer;
+				&:hover::before {
+					content: '×';
+					display: flex;
+					align-items: center;
+					justify-content: center;
+					position: absolute;
+					top: 0;
+					left: 0;
+					right: 0;
+					bottom: 0;
+					font-family: monospace;
+					font-size: 1.5rem;
+					background-color: #19181a;
+					color: #f92672;
+					opacity: 0.75;
+				}
+			}
+		}
+		#oracle-odds {
+			grid-row: 1;
+			grid-column: 1 / -1;
+			display: grid;
+			grid-template-columns: subgrid;
+			.oracle-odds {
+				display: grid;
+				grid-row: 1;
+				grid-column: 1 / -1;
+				grid-template-columns: subgrid;
+				&:not(.active) { display: none; }
+				.oracle-augury-odds {
+					background-clip: content-box;
+					background-color: unset;
+					background: linear-gradient(to top, var(--color) 0% calc(var(--amount) * 5%), transparent calc(var(--amount) * 5%));
+					&.never { background: #19181a; }
+					&.always { outline: solid 0.125rem var(--color); }
+				}
+			}
+		}
+	}
+}

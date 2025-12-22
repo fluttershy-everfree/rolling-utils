@@ -1,0 +1,66 @@
+@scope (#table-rolling) {
+	[action="reroll"] { --color: #a9dc76; }
+	[action="void"  ] { --color: #ffd866; }
+	[action="remove"] { --color: #f92672; }
+	.tables-list {
+		text-align: center;
+	}
+	.table-rolls {
+		display: inline-grid;
+		grid-template-columns: auto auto auto;
+		grid-auto-flow: row;
+
+		.table-roll .card-ref {
+			display: inline-block;
+			font-family: monospace;
+			margin-right: -0.25rem;
+		}
+		.table-roll {
+			grid-column: 1 / -1;
+			display: grid;
+			grid-gap: 0.5rem;
+			grid-template-columns: subgrid;
+			align-items: center;
+			position: relative;
+			left: calc(var(--order) * 0.75rem);
+			&.card-ref-hover,
+			&.card-ref-hover[order]::before { border-color: #fcfcfa; }
+			&[order]::before {
+				content: attr(order);
+				font-family: monospace;
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				right: 100%;
+				padding: 0.25rem 0.25rem;
+				border-radius: 0.25rem;
+				border: 0.125rem solid #19181a;
+				background-color: #2d2a2e;
+				margin-right: -0.25rem;
+			}
+			> .label:empty::before {
+				content: attr(default);
+				color: #939293;
+				font-style: italic;
+			}
+			> .table-roll-actions {
+				justify-self: end;
+				> .table-roll-action {
+					appearance: none;
+					font-family: monospace;
+					font-weight: bolder;
+					border-radius: 0.25rem;
+					background-color: var(--color);
+					border-color: var(--color);
+				}
+			}
+		}
+	}
+	.card-ref {
+		display: inline-block;
+		font-family: monospace;
+		padding: 0.125rem 0.125rem;
+		margin-right: -0.25rem;
+		&:hover { border-color: #fcfcfa; }
+	}
+}

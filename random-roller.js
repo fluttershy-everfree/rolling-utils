@@ -291,26 +291,31 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			memoize,
 			number,
 			roll,
-			range
+			range,
+			backrefs: new Map(),
+			passing_value: []
 		};
 	}
 
 
 
-	function as_value(input, context) {
+	function as_number(input, context) {
 		const {type, value} = input;
 		switch (type) {
 			case 'roll':
 			case 'number': {
 				return input;
 			}
+			case 'string': {
+				return input.value.length;
+			}
 			case 'list':
 			case 'spread': {
 				if (value.length === 1) {
-					return as_value(value[0]);
+					return as_value(value[0], context);
 				}
-				const sum = value.reduce((sum, value) => (sum+as_value(value).value), 0);
-				const computed_probabilities = context.stats_mode ? PROBS.compute(input) : undefined;
+				const sum = value.reduce((sum, value) => (sum+as_value(value, context).value), 0);
+				const computed_probabilities = context?.stats_mode ? PROBS.compute(input) : undefined;
 				return ({type:'number', value:sum, computed_probabilities});
 			}
 			case 'range': {
@@ -321,13 +326,25 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			}
 		}
 	}
+	function as_value(input, context) {
+		const {type, value} = input;
+		switch (type) {
+			case 'roll':
+			case 'number':
+			case 'string': {
+				return input;
+			}
+			default: {
+				return as_number(input, context);
+			}
+		}
+	}
 	function as_single(input, context) {
 		const {type, value, probabilities, lower_bound, upper_bound} = input;
 		switch (type) {
-			case 'roll': {
-				return input;
-			}
+			case 'roll':
 			case 'number':
+			case 'string':
 			case 'list':
 			case 'range': {
 				return input;
@@ -345,6 +362,7 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 		switch (type) {
 			case 'roll':
 			case 'number':
+			case 'string':
 			case 'list': {
 				return ({type: 'spread', value:[input]})
 			}
@@ -372,7 +390,8 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 		const {type, value, probabilities, computed_probabilities} = input;
 		switch (type) {
 			case 'roll':
-			case 'number': {
+			case 'number':
+			case 'string': {
 				const made_up_list = {type: 'list', value:[input], computed_probabilities};
 				made_up_list.probabilities = PROBS.single(made_up_list);
 				return made_up_list;
@@ -432,9 +451,9 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 		const rleft  = lrange ? left  : as_value(left , context);
 		const rright = rrange ? right : as_value(right, context);
 		if (lrange == rrange) {
-			const left_value = lrange ? range_sum(left.lower_bound, left.right_value) : rleft.value;
-			const right_value = lrange ? range_sum(right.lower_bound, right.right_value) : rright.value
-			const value = add ? left_value + right_value : left_value - right_Value;
+			const left_value = lrange ? range_sum(left.lower_bound, left.upper_bound) : rleft.value;
+			const right_value = lrange ? range_sum(right.lower_bound, right.upper_bound) : rright.value;
+			const value = add ? left_value + right_value : left_value - right_value;
 			return ({ type:'number', value });
 		}
 		const lower_bound = (lrange ? rleft.lower_bound : add ? rright.lower_bound : -rright.upper_bound);
@@ -463,41 +482,97 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 		}
 		return range;
 	}
+	function* iterate(value, context) {
+		switch (value.type) {
+			case 'roll':
+			case 'number':
+			case 'string':
+				yield value.value;
+				break;
+			case 'predicate':
+				yield DEFAULT_VALUE;
+				break;
+			case 'list':
+			case 'spread':
+				for (let inner of value) {
+					yield as_value(inner, context);
+				}
+				break;
+			case 'range':
+				let i = value.lower_bound;
+				while (i <= value.upper_bound) {
+					yield i;
+					i++;
+				}
+				break;
+			default:
+				yield DEFAULT_VALUE;
+		}
+	}
 	const operators = new Map()
 		.set('{block-linker}', { priority:90, apply:(_) => _ })
+		.set('as', { priority: 0, apply: (value, label, context) => Object.assign({}, value, {label:as_value(label, context).value}),
+			usage: '<value>as<label>', help: 'Adds a label to a value. Beware that all transformations lose labels. A label may survive an operator if it passes on an argument as is (some operators can optimize processing and pass values as is) but this is unreliable.'
+		})
+		.set('@', { priority: 0, apply: (value, index, context) => {
+			context.backrefs.set(as_value(index).value, value);
+			return value;
+		}, usage: '<value>@<index> -> any', help: 'Stores a value as a backref that will be accessible via $<index>. Passes the value on as is.'
+		})
+		.set('@@', { priority: 0, apply: (value, index, context) => {
+			const values = iterate(value, context);
+			const indexes = iterate(index, context);
+			while (!(index = indexes.next()).done) {
+				let value = values.next();
+				context.backrefs.set(
+					as_value(index.value, context).value,
+					value.done ? DEFAULT_VALUE : as_value(value, context).value
+				);
+			}
+			return value;
+		}, usage: '<values>@<indexes> -> any', help: 'Stores the values as backrefs that will be accessible via $<index>. <values> are iterated in sync with <indexes>. Passes the value on as is.'
+		})
+		.set('$', { priority: 80, apply: (_, index, context) => (context.backrefs.get(as_value(index, context).value) ?? VOID_RESOLVE),
+			usage: '$<number> -> any', help: 'Used in conjunction with |. Repeats a value previously computed, counting from 1. \\0 repeats the previous value.',
+			default_right: ZERO
+		})
+		.set('|', { priority: -2, apply: (left, right, context) => right,
+			postprocess: (value, is_right, context) => {
+				if (is_right) { context.passing_value.pop(); }
+				else { context.passing_value.push(value.result); }
+			},
+			usage: '<expr>|<expr> -> any', help: 'Executes both expressions and returns the latter, while adding each to the list of backrefs as they are computed.'
+		})
+		.set('.', { priority: 80, apply: (_1, _2, context) => {
+			const l = context.passing_value.length;
+			return l ? context.passing_value[l-1] : VOID_RESOLVE;
+		}, usage: '\\<number> -> any', help: 'Used in conjunction with |. Repeats a value previously computed, counting from 1. \\0 repeats the previous value.',
+			is_token: true
+		})
 		/* roll */
 		.set('d'  , { priority:5, apply:(count, size, context) => {
 			const {value:cvalue, computed_probabilities:pcount} = as_value(count, context);
-			const {value:svalue, computed_probabilities:psize} = as_value(size , context);
+			let random_getter;
+			let base_roll = { type: 'roll' };
+			if (size.type === 'spread' || size.type === 'list') {
+				const values_size = size.value.length;
+				random_getter = (values_size)
+					? () => size.value[Math.floor(Math.random() * values_size)].value
+					: () => 0;
+			} else if (size.type === 'range') {
+				const range_size = size.upper_bound + 1 - size.lower_bound;
+				random_getter = () => (size.lower_bound + Math.floor(Math.random() * range_size));
+			} else {
+				const {value:svalue, computed_probabilities:psize} = as_value(size , context);
+				random_getter = () => 1+Math.floor(Math.random() * Math.max(svalue, 1));
+				base_roll = context.roll(svalue);
+			}
 
-			const base_roll = context.roll(svalue);
 			const values = (cvalue < 1) ? [] : (new Array(Math.max(cvalue, 0)))
 				.fill(undefined)
-				.map(_ => Object.assign({}, base_roll, {value:1+Math.floor(Math.random() * Math.max(svalue, 1))}));
+				.map(_ => Object.assign({}, base_roll, {value:random_getter()}));
 
-			const roll = { type:'list' , value:values};
-			if (context.stats_mode) {
-				const probabilities = new Map();
-				const weighed_probabilities = [];
-				for (let size_value of psize.keys()) {
-					const lone_roll_type = context.roll(size_value);
-					for (let count_value of pcount.keys()) {
-						const roll_type = context.memoize(count_value+'⋅d'+size_value, () => (/*(count_value === 1)
-							? lone_roll_type
-							: */{
-								type: 'list',
-								value: (new Array(Math.max(cvalue, 0))).fill(lone_roll_type),
-								computed_probabilities: fast_expo(lone_roll_type.computed_probabilities, count_value, PROBS.combine)
-							}
-						));
-						const value_probability = FRACS.mul(psize.get(size_value), pcount.get(count_value));
-						probabilities.set(roll_type, value_probability);
-						weighed_probabilities.push({weight: value_probability, probabilities:roll_type.computed_probabilities})
-					}
-				}
-				Object.assign(roll, {probabilities, computed_probabilities:PROBS.average(weighed_probabilities)});
-			}
-			return roll;
+			return { type:'list' , value:values};
 		}, usage: '<count:number>d<size:number> -> list<roll>', help: 'Throws <count> <size>-sided dice, giving a list of <count> values ranging from 1 to <size>. Any other type is converted to <number> prior the the computation.',
 			default_left: ONE, is_random: true
 		})
@@ -529,8 +604,7 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 		.set('*'  , { priority:3, apply:(left, right, context) => { /* TODO probs */
 			const {value:lvalue, computed_probabilities:lprobs} = as_value(left , context);
 			const {value:rvalue, computed_probabilities:rprobs} = as_value(right, context);
-			const computed_probabilities = PROBS.combine(lvalue, rvalue, MULTIPLICATION);
-			return ({ type:'number', value:lvalue*rvalue, computed_probabilities });
+			return ({ type:'number', value:lvalue*rvalue });
 		}, usage: '<number>*<number> -> number', help: 'Combines values by multiplication. Two <number> give the product (<number>). Any other type is converted to <number> prior the the computation.',
 			default_left: ONE,
 			default_right: ONE
@@ -560,14 +634,14 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			default_right: ZERO
 		})
 		/* append */
-		.set(','  , { priority:0, apply:(list, value, context) => {
-			const {value:lvalue} = as_values(list);
-			const {value:vvalue} = as_values(value);
+		.set(','  , { priority:-1, apply:(list, value, context) => {
+			const {value:lvalue} = as_values(list, context);
+			const {value:vvalue} = as_values(value, context);
 			return ({ type: 'spread'  , value:[...lvalue, ...vvalue] });
 		}, usage: '<body:spread>,<tail:any> -> spread<any>', help: 'Combines values into a <spread>. If <tail> is a <spread>, its values are considered separately, if it is any other type, is considered a single value. If <body> is not a <list>, it is converted into one prior the the computation.'
 		})
 		/* range */
-		.set('..' , { priority:7, apply:(lower_bound , upper_bound, context) => make_range(as_value(lower_bound), as_value(upper_bound), context),
+		.set('..' , { priority:7, apply:(lower_bound , upper_bound, context) => make_range(as_value(lower_bound, context), as_value(upper_bound, context), context),
 			usage: '<lower_bound:number>..<upper_bound:number> -> range', help: 'Makes a <range> going from <lower_bound> through <upper_bound>, inclusive. <upper_bound> is corrected to be greater or equal to <lower_bound> in all computations. Any other type is converted to <number> prior the the computation.'
 		})
 		/* spread */
@@ -583,6 +657,10 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 		usage: '<key:matcher>:<expr> -> conditional', help: ''});
 
 	const FILTERS = (() => {
+		// type : keep|drop|count|raw|case
+		// hl : raw -> keep, case -> length(input) > target, <boolean>
+		// f : raw, case -> input contains target, <boolean>
+		// >|<|>=|<=|=|! : raw, case -> as_value(input) comapres to target, <boolean>
 		function as_length(value) {
 			switch (value.type) {
 				case 'roll':
@@ -626,12 +704,19 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			const drop = (type === 'drop');
 			if (cvalue === 0) { return drop ? collection : DEFAULT_LIST; }
 			if (cvalue >= length) { return drop ? DEFAULT_LIST : collection; }
+			if (collection.type == 'range') {
+				let {lower_bound:lower, upper_bound:upper} = collection;
+				return ({ type:'range',
+					lower_bound: (drop == high) ? lower : drop ? (lower + cvalue) : (upper - cvalue + 1),
+					upper_bound: (drop ^ high) ? upper : drop ? (upper - cvalue) : (lower + cvalue - 1)
+				});
+			}
 
 			const value_sort = high ? sort_by_value_desc : sort_by_value_asc;
 			const {value:lvalue} = as_list(collection, context);
 
 			const mapped = new Map();
-			lvalue.forEach(value => mapped.set(value, as_value(value)));
+			lvalue.forEach(value => mapped.set(value, as_value(value, context)));
 			const selected_values = lvalue
 				.toSorted((a, b) => value_sort(mapped.get(a), mapped.get(b)))
 				.filter((_, index) => ((index < cvalue) ^ drop));
@@ -648,34 +733,62 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 		const exact = (collection, exclude, type, pool, context) => { /* TODO probs, will be processing intensive */
 			const drop = (type === 'drop') ^ exclude;
 			if ((collection.type === 'range') && (pool.type === 'range')) {
-				if ((collection.upper_bound < pool.lower_bound) || (pool.upper_bound < collection.lower_bound)) {
-					if (type === 'count') { return drop ? collection.upper_bound + 1 - collection.lower_bound : 0; }
-					else { return drop ? collection : DEFAULT_LIST; }
-				}
-				const lower_bound = Math.max(collection.lower_bound, pool.lower_bound);
-				const upper_bound = Math.min(collection.upper_bound, pool.upper_bound);
-				if (type === 'count') {
-					const range = upper_bound + 1 - lower_bound;
-					return drop ? collection.upper_bound + 1 - collection.lower_bound - range : range;
-				}
-				if (drop) {
-					const lower_part = array(collection.lower_bound, lower_bound-1);
-					const upper_part = array(upper_bound+1, collection.upper_bound);
-					return ({ type:'list', value:[...lower_part, ...upper_part] });
-				}
-				return ({ type:'range', lower_bound, upper_bound });
+				return match_exact_ranges(collection, exclude, type, pool, context);
 			}
 			const {value:lvalue} = as_list(collection, context);
-			const mapped_target = pool.value.map((value) => as_value(value, context).value);
-
-			const values = lvalue.filter((lvalue) => (
-				drop ^ mapped_target.includes(as_value(lvalue, context).value)
-			));
-			if (type === 'count') {
-				return ({ type:'number', value:values.length });
+			let matcher;
+			if (pool.type === 'range') {
+				matcher = (value) => {
+					const cast = as_value(value, context).value;
+					return (cast >= pool.lower_bound) && (cast <= pool.upper_bound);
+				};
+			} else {
+				const mapped_target = new Set();
+				switch (pool.type) {
+					case 'roll':
+					case 'number':
+						mapped_target.add(pool.value);
+						break;
+					case 'list':
+					case 'spread':
+						for (let value of pool.value) {
+							mapped_target.add(as_value(value, context).value);
+						}
+						break;
+					default:
+				}
+				matcher = (value) => ( drop ^ mapped_target.has(as_value(value, context).value) );
 			}
+			if (type === 'count') {
+				let count = 0;
+				for (let value of lvalue) {
+					if (matcher(value)) { count++; }
+				}
+				return ({ type:'number', value:count });
+			}
+
+			const values = lvalue.filter(matcher);
 			return ({ type:'list', value:values });
 		};
+		function match_exact_ranges(collection, exclude, type, pool, context) {
+			const drop = (type === 'drop') ^ exclude;
+			if ((collection.upper_bound < pool.lower_bound) || (pool.upper_bound < collection.lower_bound)) {
+				if (type === 'count') { return drop ? ({ type: 'number', value: collection.upper_bound + 1 - collection.lower_bound}) : ZERO; }
+				else { return drop ? collection : DEFAULT_LIST; }
+			}
+			const lower_bound = Math.max(collection.lower_bound, pool.lower_bound);
+			const upper_bound = Math.min(collection.upper_bound, pool.upper_bound);
+			if (type === 'count') {
+				const range = upper_bound + 1 - lower_bound;
+				return ({ type: 'number', value: drop ? collection.upper_bound + 1 - collection.lower_bound - range : range});
+			}
+			if (drop) {
+				const lower_part = array(collection.lower_bound, lower_bound-1);
+				const upper_part = array(upper_bound+1, collection.upper_bound);
+				return ({ type:'list', value:[...lower_part, ...upper_part] });
+			}
+			return ({ type:'range', lower_bound, upper_bound });
+		}
 		function array(min, max) {
 			return (max < min) ? [] : Array.from({length:(max+1-min)}, (_,i) => (min+i));
 		}
@@ -684,42 +797,68 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			if (type === 'drop') { return p; }
 			return c;
 		}
-		function strict(collection, over, type, {value:tvalue}, context) {
-			if (collection.type === 'range') {
-				const {lower_bound, upper_bound} = collection;
-				// Nothing
-				const nothing = (over ? (tvalue >= upper_bound) : (tvalue <= lower_bound));
-				if (nothing) { return kcp(type, DEFAULT_LIST, collection, 0); }
-				// Everything
-				const everything = (over ? (tvalue < lower_bound) : (tvalue > upper_bound));
-				if (everything) { return kcp(type, DEFAULT_LIST, collection, upper_bound + 1 - lower_bound); }
-				// Partial
-				if (over) {
-					switch (type) {
-						case 'keep': return ({ type:'range', lower_bound:tvalue+1, upper_bound });
-						case 'drop': return ({ type:'range', lower_bound, upper_bound:tvalue });
-						case 'count': return upper_bound - tvalue;
-					}
-				} else {
-					switch (type) {
-						case 'keep': return ({ type:'range', lower_bound, upper_bound: tvalue-1 });
-						case 'drop': return ({ type:'range', lower_bound:tvalue, upper_bound });
-						case 'count': return tvalue - lower_bound;
-					}
+		function comparing(over, lenient, tvalue) {
+			return (lenient
+				? (over ? (v) => (v >= tvalue) : (v) => (v <= tvalue))
+				: (over ? (v) => (v > tvalue) : (v) => (v < tvalue))
+			);
+		}
+		function compare_ranges(range, over, lenient, type, tvalue, context) {
+			const {lower_bound, upper_bound} = range;
+			// Nothing
+			const nothing = (lenient
+				? (over ? (tvalue >  upper_bound) : (tvalue <  lower_bound))
+				: (over ? (tvalue >= upper_bound) : (tvalue <= lower_bound))
+			);
+			if (nothing) { return kpc(type, DEFAULT_LIST, range, ZERO); }
+			// Everything
+			const everything = (lenient
+				? (over ? (tvalue <= lower_bound) : (tvalue >= upper_bound))
+				: (over ? (tvalue <  lower_bound) : (tvalue >  upper_bound))
+			);
+			if (everything) { return kpc(type, DEFAULT_LIST, range, ({ type:'number', value:upper_bound + 1 - lower_bound})); }
+			// Partial
+			if (over) {
+				if (lenient) { tvalue--; }
+				switch (type) {
+					case 'keep': return ({ type:'range', lower_bound:tvalue+1, upper_bound });
+					case 'drop': return ({ type:'range', lower_bound, upper_bound:tvalue });
+					case 'count': return ({ type:'number', value:upper_bound - tvalue});
 				}
+			} else {
+				if (lenient) { tvalue++; }
+				switch (type) {
+					case 'keep': return ({ type:'range', lower_bound, upper_bound: tvalue-1 });
+					case 'drop': return ({ type:'range', lower_bound:tvalue, upper_bound });
+					case 'count': return ({ type:'number', value:tvalue - lower_bound});
+				}
+			}
+		}
+		function compare(collection, over, lenient, type, tvalue, context) {
+			if (collection.type === 'range') {
+				return compare_ranges(collection, over, lenient, type, tvalue, context);
 			}
 			const drop = (type === 'drop');
 			const {value:lvalue} = as_list(collection, context);
-			const comparator = over ? (v) => (v > tvalue) : (v < tvalue);
+			const matcher = comparing(over, lenient, tvalue);
 
-			const values = lvalue.filter((lvalue) => (
-				drop ^ comparator(as_value(lvalue, context).value)
-			));
 			if (type === 'count') {
-				return ({ type:'number', value:values.length });
+				let count = 0;
+				for (let value of lvalue) {
+					if (matcher(as_value(value, context).value)) { count++; }
+				}
+				return ({ type:'number', value:count });
 			}
-
+			const values = lvalue.filter((lvalue) => (
+				drop ^ matcher(as_value(lvalue, context).value)
+			));
 			return ({type:'list', value:values });
+		}
+		function strict(collection, over, type, {value:tvalue}, context) {
+			return compare(collection, over, false, type, tvalue, context);
+		}
+		function lenient(collection, over, type, {value:tvalue}, context) {
+			return compare(collection, over, true, type, tvalue, context);
 		}
 		function random_indexes(amount, size) {
 			const redirects = new Map();
@@ -754,7 +893,7 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			return ({ type:'list', value:values });
 		};
 		const frequency = (collection, type, pool, context) => {
-			if (['range', 'number', 'roll', 'variable'].includes(pool.type)) {
+			if (['range', 'number', 'roll', 'variable', 'string'].includes(collection.type)) {
 				return exact(collection, false, type, pool, context);
 			}
 			const drop = (type === 'drop');
@@ -775,61 +914,62 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			high_low,
 			exact,
 			strict,
+			lenient,
 			random,
 			frequency
 		}; 
 	})();
+	function selector(preprocess, filter, binary) {
+		return (left, right, context) => {
+			const target = preprocess ? preprocess(right, context) : right;
+			const predicate = ({ type:'predicate', value: ((binary == undefined)
+				? (collection, type, context) => filter(collection, type, target, context)
+				: (collection, type, context) => filter(collection, binary, type, target, context)
+			)});
+			return ((left && (left !== VOID_RESOLVE)) ? predicate.value(left, 'raw', context) : predicate);
+		};
+	}
 	const selectors = new Map()
 		/* Min-max fundamendtaly flawed : discreet reachable values are not stored. Espacially true for = and ! */
 		/* Additionnaly : filter work on pre-computed collections, not theorectical models so their min-max predictions are not stable. */
 		/* An isolated filter may be accurate, multiple ones will result in discrepancies */
-		.set('h', { priority:6, apply:(_, count, context) => {
-			const c = as_value(count, context);
-			return ({ type:'predicate', value:(collection, type, context) => FILTERS.high_low(collection, true, type, c, context) });
-		}, usage: 'h<count:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches the <count> highest values.'
+		.set('h', { priority:6, apply:selector(as_value /* count */, FILTERS.high_low, true /* hogh */),
+			usage: 'h<count:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches the <count> highest values.'
 		})
-		.set('l', { priority:6, apply:(_, count, context) => {
-			const c = as_value(count, context);
-			return ({ type:'predicate', value:(collection, type, context) => FILTERS.high_low(collection, false, type, c, context) });
-		}, usage: 'l<count:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches the <count> lowest values.'
+		.set('l', { priority:6, apply:selector(as_value /* count */, FILTERS.high_low, false /* hogh */),
+			usage: 'l<count:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches the <count> lowest values.'
 		})
-		.set('#', { priority:6, apply:(_, count, context) => {
-			const c = as_value(count, context);
-			return ({ type:'predicate', value:(collection, type, context) => FILTERS.random(collection, type, c, context) });
-		}, usage: '#<amount:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches <amount> random values.', is_random: true
+		.set('#', { priority:6, apply:selector(as_value /* amount */, FILTERS.random),
+			usage: '#<amount:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches <amount> random values.', is_random: true
 		})
-		.set('<', { priority:6, apply:(_, threshold, context) => {
-			const t = as_value(threshold, context);
-			return ({ type:'predicate', value:(collection, type, context) => FILTERS.strict(collection, false, type, t, context) });
-		}, usage: '<<threshold:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values strictly below <threshold>.'
+		.set('<', { priority:6, apply:selector(as_value /* threshold */, FILTERS.strict, false /* over */),
+			usage: '<<threshold:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values strictly below <threshold>.'
 		})
-		.set('>', { priority:6, apply:(_, threshold, context) => {
-			const t = as_value(threshold, context);
-			return ({ type:'predicate', value:(collection, type, context) => FILTERS.strict(collection, true, type, t, context) });
-		}, usage: '><threshold:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values strictly above <threshold>.'
+		.set('>', { priority:6, apply:selector(as_value /* threshold */, FILTERS.strict, true /* over */),
+			usage: '><threshold:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values strictly above <threshold>.'
 		})
-		.set('=', { priority:6, apply:(_, pool, context) => {
-			const tvalue = pool;//as_list(pool, context); /* List of values are tolerated */
-			return ({ type:'predicate', value:(collection, type, context) => FILTERS.exact(collection, false, type, tvalue, context) });
-		}, usage: '=<pool:list|range|number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values equal to any value contained in the <pool>.'
+		.set('<=', { priority:6, apply:selector(as_value /* threshold */, FILTERS.lenient, false /* over */),
+			usage: '<<threshold:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values less than or equal to <threshold>.'
 		})
-		.set('!', { priority:6, apply:(_, pool, context) => {
-			const tvalue = pool;//as_list(pool, context); /* List of values are tolerated */
-			return ({ type:'predicate', value:(collection, type, context) => FILTERS.exact(collection, true , type, tvalue, context) });
-		}, usage: '!<pool:list|range|number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values different from every value contained in <pool>.'
+		.set('>=', { priority:6, apply:selector(as_value /* threshold */, FILTERS.lenient, true /* over */),
+			usage: '><threshold:number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values greater than or equal to <threshold>.'
 		})
-		.set('f', { priority:6, apply:(_, pool, context) => {
-			const tvalue = pool;
-			return ({ type:'predicate', value:(collection, type, context) => FILTERS.frequency(collection, type, tvalue, context) });
-		}, usage: 'f<pool:list|range|number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches the values of <pool>, one time each. If the collection contains a value twice but the pool has it once, only the first value will match.'
+		.set('=', { priority:6, apply:selector(null /* pool */, FILTERS.exact, false /* exclude */),
+			usage: '=<pool:list|range|number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values equal to any value contained in the <pool>.'
+		})
+		.set('!', { priority:6, apply:selector(null /* pool */, FILTERS.exact, true /* exclude */),
+			usage: '!<pool:list|range|number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches values different from every value contained in <pool>.'
+		})
+		.set('f', { priority:6, apply:selector(null /* pool */, FILTERS.frequency),
+			usage: 'f<pool:list|range|number>', help: 'Used in conjunction with keep (k), drop (p) or count (c). Matches the values of <pool>, one time each. If the collection contains a value twice but the pool has it once, only the first value will match.'
 		});
 	const functions = new Map()
-		.set('switch', { priority:99,
-			has_block: true,
-			apply:(args, cases, context) => {
-				const param = as_values(args).value[0] ?? 0;
+		.set('switch', { priority:99, has_block: true, apply:(args, {value:cases}, context) => {
+				const param = as_values(args, context).value[0] ?? 0;
+				console.log(args, param);
 				for (let {left, right} of cases) {
 					const p = as_predicate(left, context);
+					console.log(p);
 				}
 				return ZERO;
 			},
@@ -850,6 +990,44 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			},
 			default_left: DEFAULT_SPREAD, raw_left: false, raw_right: true,
 			usage: 'switch(<expr>) {<case>[, <case>[, ...]}', help: ''
+		})
+		.set('min', { priority: 99, has_block: false,
+			apply:(args, _, context) => {
+				switch (args.type) {
+					case 'roll':
+					case 'number':
+					case 'string':
+						return args;
+					case 'range':
+						return context.number(args.lower_bound);
+					case 'list':
+					case 'spread':
+						return args.value.reduce((min, value) => {
+							return (!min || as_value(value).value < min.value) ? value : min;
+						}) ?? VOID_RESOLVE;
+				}
+				return VOID_RESOLVE;
+			},
+			usage: 'min<values>', help: 'Takes the minimum value from <values>. An alternative to <values>kl1.'
+		})
+		.set('max', { priority: 99, has_block: false,
+			apply:(args, _, context) => {
+				switch (args.type) {
+					case 'roll':
+					case 'number':
+					case 'string':
+						return args;
+					case 'range':
+						return context.number(args.upper_bound);
+					case 'list':
+					case 'spread':
+						return args.value.reduce((min, value) => {
+							return (!min || as_value(value).value > min.value) ? value : min;
+						}) ?? VOID_RESOLVE;
+				}
+				return VOID_RESOLVE;
+			},
+			usage: 'max<values>', help: 'Takes the maximum value from <values>. An alternative to <values>kh1.'
 		});
 	function reorder_group(group) {
 		let root = group.root;
@@ -857,12 +1035,14 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 		while (node?.value?.priority !== undefined) {
 			const priority = node.left?.value?.priority;
 			const base_node = node;
-			if ((priority < node.value.priority) || ((node.left?.key !== undefined) && (node.left.right === undefined))) {
+			if (!node.left?.value?.is_token && (
+				(priority < node.value.priority) || ((node.left?.key !== undefined) && (node.left.right === undefined))
+			)) {
 				const swapped_child = node.left.right;
 				const next_node = node.parent ?? node.left;
 				/* Attach LEFT to parent, replacing NODE */
 				if (node.parent === undefined) { // ROOT
-					root = node.left
+					root = node.left;
 				} else {
 					node.parent.left = node.left;
 				}
@@ -880,6 +1060,12 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 				node = node.left;
 			}
 		}
+		(new Set([root])).forEach((node, _, set) => {
+			delete node.parent;
+			set.delete(node);
+			if (node.left) { set.add(node.left); }
+			if (node.right) { set.add(node.right); }
+		});
 		group.root = root;
 	}
 	function tokenized() {
@@ -899,7 +1085,16 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			.set('(', '{group}'  ).set(')', '{group}'  )
 			.set('[', '{matcher}').set(']', '{matcher}')
 			.set('{', '{block}'  ).set('}', '{block}'  );
-		const tokens = expr.replaceAll(/[^-+*dkp=!<>hl#(,.)\[\]{}\da-zA-Z:]+/g, ' ')//.split(/(?<=([-+*dkp=!<>hl#(,)\[\]]))(?!\1)|(?<=\d)(?!\d)|(?<=\.)(?!\.)/);
+		const strings = expr.match(/"[^"]*"/g)?.map(str => str.substring(1, str.length-1));
+		let quotes_count = 0;
+		let index = 0;
+		while (index = 1+expr.indexOf('"', index)) { quotes_count++; }
+
+		if (quotes_count%2) { throw "Unmatched quote at " + (expr.lastIndexOf('"')); }
+
+		const tokens = expr
+			.replaceAll(/"[^"]*"/g, '"')
+			.replaceAll(/[^-+*dkp=!<>hl#(,.)\[\]{}\da-zA-Z:|@$"]+/g, ' ')//.split(/(?<=([-+*dkp=!<>hl#(,)\[\]]))(?!\1)|(?<=\d)(?!\d)|(?<=\.)(?!\.)/);
 			.split(/(?<![a-zA-Z\d])(?=[a-zA-Z\d])|(?<=\d)(?!\d)|(?<=[a-z])(?![a-z])|(?<=[A-Z])(?![A-Z])/)
 			.map(part => {
 				if (part.match(/^\d+$/)) { return part; }
@@ -910,6 +1105,7 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 				while (position < part.length) {
 					let found = undefined;
 					for (const sub of extract_up_to(part, 3, position)) {
+						if (sub === '"') { found = '"'; break; }
 						if (operators.has(sub) || selectors.has(sub) || braces.has(sub)) {
 							found = sub;
 							break;
@@ -976,8 +1172,9 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 				}
 				push_node({ parent:undefined, type:'group', kind:old_group.kind, value:old_group.root });
 
-			}
-			else if (operators.has(token)) {
+			} else if (token === '"') {
+				push_node({ parent:current_group.root, type:'string', value: strings.shift() });
+			} else if (operators.has(token)) {
 				bind_operator({ parent:undefined, type:'operator', key:token, value:operators.get(token), left:undefined, right:undefined });
 			} else if (selectors.has(token)) {
 				bind_operator({ parent:undefined, type:'selector', key:token, value:selectors.get(token), left:undefined, right:undefined });
@@ -1035,6 +1232,7 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 	}
 	function resolve(node, default_value, context) {
 		if (node === undefined) { return {result :default_value??VOID_RESOLVE}; }
+		if (node.type === 'string') { return {node, result: node}; }
 		if (node.type === 'number') { return {node, result: node}; }
 		if (node.type === 'variable') {
 			return { node, result: context.variables.get(node.value) ?? default_value };
@@ -1043,8 +1241,11 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			const sub = resolve(node.value, default_value, context);
 			return { node, sub, result: /*as_single(*/sub.result/*, context)*/ };
 		}
-		const left  = node.value.raw_left  ? node.left  : resolve(node.left , node.value.default_left , context);
-		const right = node.value.raw_right ? node.right : resolve(node.right, node.value.default_right, context);
+		const {raw_left, raw_right} = node.value;
+		const left  = raw_left  ? {result: node.left } : resolve(node.left , node.value.default_left , context);
+		node.value.postprocess?.(left, false, context);
+		const right = raw_right ? {result: node.right} : resolve(node.right, node.value.default_right, context);
+		node.value.postprocess?.(right, true, context);
 		const r = node.value.apply(left.result, right.result, context);
 		return {node, left, right, result: r ?? default_value};
 	}
@@ -1057,10 +1258,7 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 		}
 
 		const resolved = resolve(root, undefined, context); 
-		return (((resolved.result?.type === 'spread') || (resolved.result?.type === 'range'))
-			? resolved
-			: Object.assign({}, resolved, { result: as_value(resolved.result, context) })
-		);
+		return resolved;
 	}
 	function simplified(input) {
 		const {type, value, dice} = input;
@@ -1080,9 +1278,12 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			default: { return 0; }
 		}
 	}
-	function map_as_list(map) {
+	function map_as_list(map, bonus_fields) {
 		const list = [];
 		map.forEach(({priority, usage, help}, key) => help&&list.push({key, priority, usage, help}));
+		bonus_fields&&bonus_fields.forEach(field => {
+			list.forEach(item => (item[field] = map.get(item.key)[field]));
+		});
 		return list;
 	}
 	return {ROLL:{
@@ -1102,7 +1303,7 @@ const {ROLL, PROBS, FRACS, ROUNDING} = (() => {
 			roller.prepared = prepared;
 			return roller;
 		},
-		operators: map_as_list(operators),
+		operators: map_as_list(operators, ['is_token']),
 		selectors: map_as_list(selectors),
 	}, PROBS, FRACS, ROUNDING};
 })();
